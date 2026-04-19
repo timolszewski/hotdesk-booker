@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+
+{% block title %}Hotdesk Map{% endblock %}
+
+{% block content %}
+<header class="header">
+    <div class="header-row">
+        <h1>Hotdesk Booker</h1>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="auth-status" class="badge badge-warning">Checking...</span>
+            <button id="reauth-btn" class="btn btn-sm btn-danger" onclick="window.location.href='/auth'" style="display: none;">
+                Re-authenticate
+            </button>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+    <!-- Date Navigation -->
+    <div class="card">
+        <div class="date-nav">
+            <button onclick="changeDate(-1)" id="prev-btn">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <div class="date-display">
+                <div class="day" id="date-day">--</div>
+                <div class="weekday" id="date-weekday">Loading...</div>
+            </div>
+            <button onclick="changeDate(1)" id="next-btn">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </button>
+        </div>
+        <input type="date" id="date-picker" class="form-input" onchange="setDate(this.value)" style="margin-top: 8px;">
+    </div>
+
+    <!-- Map -->
+    <div class="card">
+        <div class="card-title">Supporting Departments - 31 piętro</div>
+        <div class="map-container" id="map-container">
+            <div class="map-wrapper" id="map-wrapper">
+                <img id="map-image" class="map-image" src="/api/location/map" alt="Floor map" onload="onMapLoad()" onerror="this.src='/static/floormap.png'; this.onerror=null;">
+            </div>
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoom(0.2)">+</button>
+                <button class="zoom-btn" onclick="zoom(-0.2)">-</button>
+                <button class="zoom-btn" onclick="resetZoom()">⟲</button>
+            </div>
+        </div>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--available)"></div>
+                Available
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--booked)"></div>
+                Booked
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: var(--self-booked)"></div>
+                My Booking
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: gold; border: 2px solid #333"></div>
+                Preferred
+            </div>
+        </div>
+    </div>
+
+    <!-- My Bookings -->
+    <div class="card">
+        <div class="card-title">My Upcoming Bookings</div>
+        <div id="my-bookings">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Desk Detail Modal -->
+<div class="modal-overlay" id="desk-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title" id="modal-desk-name">Desk</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div id="modal-content">
+            <p id="modal-status"></p>
+            <div id="modal-booker" style="margin: 16px 0; padding: 12px; background: var(--gray-100); border-radius: 8px; display: none;">
+                <strong>Booked by:</strong>
+                <span id="modal-booker-name"></span>
+            </div>
+            <div id="modal-actions" style="margin-top: 16px;">
+                <button class="btn btn-primary btn-block" id="modal-book-btn" onclick="bookDesk()">
+                    Book This Desk
+                </button>
+                <button class="btn btn-danger btn-block" id="modal-cancel-btn" onclick="cancelBooking()" style="display: none; margin-top: 8px;">
+                    Cancel My Booking
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tooltip -->
+<div class="desk-tooltip" id="desk-tooltip">
+    <div class="name"></div>
+    <div class="status"></div>
+    <div class="booker"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentDate = new Date();
+    let desks = [];
+    let myBookings = [];
+    let preferredDesks = [];
+    let currentUserId = null;
+    let selectedDesk = null;
+    let mapScale = 0.5;
+    let mapOriginalWidth = 0;
+    let mapOriginalHeight = 0;
+
+    // Focus area: Supporting departments (right side of floor)
+    // Crop to show only S desks area
+    const CROP_AREA = {
+        x: 1650,      // Start X (crop left side with Engineering)
+        y: 0,         // Start Y
+        width: 1856,  // Width to show
+        height: 2050  // Full height
+    };
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+        await checkAuth();
+        await loadConfig();
+        setDateDisplay();
+        await loadDesks();
+        await loadMyBookings();
+    });
+
+    async function checkAuth() {
+        try {
+            const result = await api('GET', '/auth/status');
+            const badge = document.getElementById('auth-status');
+            const reauthBtn = document.getElementById('reauth-btn');
+
+            if (result.authenticated) {
+                badge.textContent = 'Connected';
+                badge.className = 'badge badge-success';
+                currentUserId = result.user?.id;
+                reauthBtn.style.display = 'none';
+            } else {
+                badge.textContent = 'Disconnected';
+                badge.className = 'badge badge-danger';
+                reauthBtn.style.display = 'inline-block';
+            }
+        } catch (e) {
+            console.error('Auth check failed:', e);
+            document.getElementById('reauth-btn').style.display = 'inline-block';
+        }
+    }
+
+    async function loadConfig() {
+        try {
+            const config = await api('GET', '/config');
+            preferredDesks = config.preferred_desks || [];
+        } catch (e) {
+            console.error('Failed to load config:', e);
+        }
+    }
+
+    function setDateDisplay() {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+        document.getElementById('date-day').textContent =
+            `${currentDate.getDate()} ${months[currentDate.getMonth()]}`;
+        document.getElementById('date-weekday').textContent = days[currentDate.getDay()];
+        document.getElementById('date-picker').value = formatDate(currentDate);
+
+        // Disable prev button if today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const current = new Date(currentDate);
+        current.setHours(0, 0, 0, 0);
+        document.getElementById('prev-btn').disabled = current <= today;
+    }
+
+    function formatDate(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    function changeDate(delta) {
+        currentDate.setDate(currentDate.getDate() + delta);
+        setDateDisplay();
+        loadDesks();
+    }
+
+    function setDate(dateStr) {
+        currentDate = new Date(dateStr);
+        setDateDisplay();
+        loadDesks();
+    }
+
+    async function loadDesks() {
+        const mapWrapper = document.getElementById('map-wrapper');
+        const existingDesks = mapWrapper.querySelectorAll('.desk');
+        existingDesks.forEach(d => d.remove());
+
+        try {
+            const result = await api('GET', `/desks?date=${formatDate(currentDate)}`);
+            desks = result.desks || [];
+            renderDesks();
+        } catch (e) {
+            console.error('Failed to load desks:', e);
+            showToast('Failed to load desk availability');
+        }
+    }
+
+    function onMapLoad() {
+        const img = document.getElementById('map-image');
+        mapOriginalWidth = img.naturalWidth;
+        mapOriginalHeight = img.naturalHeight;
+
+        // Apply crop styling
+        const wrapper = document.getElementById('map-wrapper');
+        wrapper.style.overflow = 'hidden';
+
+        resetZoom();
+        renderDesks();
+    }
+
+    function zoom(delta) {
+        mapScale = Math.max(0.25, Math.min(1.5, mapScale + delta));
+        applyZoom();
+    }
+
+    function resetZoom() {
+        const container = document.getElementById('map-container');
+        // Scale to fit the cropped area width
+        mapScale = container.clientWidth / CROP_AREA.width;
+        applyZoom();
+    }
+
+    function applyZoom() {
+        const wrapper = document.getElementById('map-wrapper');
+        const img = document.getElementById('map-image');
+
+        // Set wrapper size to cropped area
+        wrapper.style.width = `${CROP_AREA.width * mapScale}px`;
+        wrapper.style.height = `${CROP_AREA.height * mapScale}px`;
+
+        // Position and scale the image to show only cropped area
+        img.style.width = `${mapOriginalWidth * mapScale}px`;
+        img.style.height = `${mapOriginalHeight * mapScale}px`;
+        img.style.marginLeft = `${-CROP_AREA.x * mapScale}px`;
+        img.style.marginTop = `${-CROP_AREA.y * mapScale}px`;
+
+        renderDesks();
+    }
+
+    function renderDesks() {
+        const mapWrapper = document.getElementById('map-wrapper');
+        const existingDesks = mapWrapper.querySelectorAll('.desk');
+        existingDesks.forEach(d => d.remove());
+
+        desks.forEach(desk => {
+            // Skip desks outside the cropped area (Engineering desks)
+            if (desk.x < CROP_AREA.x || desk.x > CROP_AREA.x + CROP_AREA.width) {
+                return;
+            }
+
+            const div = document.createElement('div');
+            div.className = 'desk';
+
+            // Adjust position relative to crop area
+            const adjustedX = desk.x - CROP_AREA.x;
+            const adjustedY = desk.y - CROP_AREA.y;
+
+            div.style.left = `${adjustedX * mapScale}px`;
+            div.style.top = `${adjustedY * mapScale}px`;
+            div.style.width = `${desk.width * mapScale}px`;
+            div.style.height = `${desk.height * mapScale}px`;
+
+            // Get short name
+            const shortName = desk.name.split(' ')[0];
+            div.textContent = shortName;
+
+            // Determine status
+            const hasBookings = desk.bookings && desk.bookings.length > 0;
+            const myBooking = hasBookings && desk.bookings.find(b => b.userId === currentUserId);
+
+            if (!desk.allowed) {
+                div.classList.add('not-allowed');
+            } else if (myBooking) {
+                div.classList.add('self-booked');
+            } else if (hasBookings) {
+                div.classList.add('booked');
+            } else if (desk.available) {
+                div.classList.add('available');
+            } else {
+                div.classList.add('not-allowed');
+            }
+
+            // Mark preferred
+            if (preferredDesks.includes(desk.name) || preferredDesks.includes(shortName)) {
+                div.classList.add('preferred');
+            }
+
+            // Click handler
+            div.onclick = () => showDeskModal(desk);
+
+            // Touch/hover for tooltip
+            div.onmouseenter = (e) => showTooltip(desk, e);
+            div.onmouseleave = hideTooltip;
+
+            mapWrapper.appendChild(div);
+        });
+    }
+
+    function showTooltip(desk, event) {
+        const tooltip = document.getElementById('desk-tooltip');
+        tooltip.querySelector('.name').textContent = desk.name;
+
+        let status = '';
+        let bookerInfo = '';
+
+        if (!desk.allowed) {
+            status = 'Not available for you';
+        } else if (desk.bookings && desk.bookings.length > 0) {
+            const booking = desk.bookings[0];
+            if (booking.userId === currentUserId) {
+                status = 'Your booking';
+            } else {
+                status = 'Booked';
+                bookerInfo = booking.userEmail || booking.userName || 'Someone';
+            }
+        } else if (desk.available) {
+            status = 'Available';
+        }
+
+        tooltip.querySelector('.status').textContent = status;
+        tooltip.querySelector('.booker').textContent = bookerInfo;
+        tooltip.querySelector('.booker').style.display = bookerInfo ? 'block' : 'none';
+
+        tooltip.style.left = `${event.pageX + 10}px`;
+        tooltip.style.top = `${event.pageY + 10}px`;
+        tooltip.classList.add('visible');
+    }
+
+    function hideTooltip() {
+        document.getElementById('desk-tooltip').classList.remove('visible');
+    }
+
+    function showDeskModal(desk) {
+        selectedDesk = desk;
+
+        document.getElementById('modal-desk-name').textContent = desk.name;
+
+        const statusEl = document.getElementById('modal-status');
+        const bookerEl = document.getElementById('modal-booker');
+        const bookerNameEl = document.getElementById('modal-booker-name');
+        const bookBtn = document.getElementById('modal-book-btn');
+        const cancelBtn = document.getElementById('modal-cancel-btn');
+
+        const hasBookings = desk.bookings && desk.bookings.length > 0;
+        const myBooking = hasBookings && desk.bookings.find(b => b.userId === currentUserId);
+
+        if (!desk.allowed) {
+            statusEl.textContent = 'This desk is not available for your user group.';
+            bookerEl.style.display = 'none';
+            bookBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        } else if (myBooking) {
+            statusEl.textContent = 'You have booked this desk.';
+            bookerEl.style.display = 'none';
+            bookBtn.style.display = 'none';
+            cancelBtn.style.display = 'block';
+            cancelBtn.dataset.bookingId = myBooking.id;
+        } else if (hasBookings) {
+            const booking = desk.bookings[0];
+            statusEl.textContent = 'This desk is booked.';
+            bookerEl.style.display = 'block';
+            bookerNameEl.textContent = booking.userEmail || booking.userName || 'Unknown';
+            bookBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        } else if (desk.available) {
+            statusEl.textContent = 'This desk is available for booking.';
+            bookerEl.style.display = 'none';
+            bookBtn.style.display = 'block';
+            cancelBtn.style.display = 'none';
+        } else {
+            statusEl.textContent = 'This desk is not available.';
+            bookerEl.style.display = 'none';
+            bookBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        }
+
+        document.getElementById('desk-modal').classList.add('visible');
+    }
+
+    function closeModal() {
+        document.getElementById('desk-modal').classList.remove('visible');
+        selectedDesk = null;
+    }
+
+    async function bookDesk() {
+        if (!selectedDesk) return;
+
+        const btn = document.getElementById('modal-book-btn');
+        btn.disabled = true;
+        btn.textContent = 'Booking...';
+
+        try {
+            const result = await api('POST', '/bookings', {
+                spaceId: selectedDesk.id,
+                date: formatDate(currentDate)
+            });
+
+            if (result.success) {
+                showToast(`Booked ${selectedDesk.name} successfully!`);
+                closeModal();
+                await loadDesks();
+                await loadMyBookings();
+            } else {
+                showToast(result.error || 'Booking failed');
+            }
+        } catch (e) {
+            showToast('Booking failed');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Book This Desk';
+        }
+    }
+
+    async function cancelBooking() {
+        const btn = document.getElementById('modal-cancel-btn');
+        const bookingId = btn.dataset.bookingId;
+
+        if (!bookingId) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Cancelling...';
+
+        try {
+            const result = await api('DELETE', `/bookings/${bookingId}`);
+
+            if (result.success) {
+                showToast('Booking cancelled');
+                closeModal();
+                await loadDesks();
+                await loadMyBookings();
+            } else {
+                showToast(result.error || 'Failed to cancel');
+            }
+        } catch (e) {
+            showToast('Failed to cancel booking');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Cancel My Booking';
+        }
+    }
+
+    async function loadMyBookings() {
+        const container = document.getElementById('my-bookings');
+
+        try {
+            const bookings = await api('GET', '/bookings');
+            myBookings = bookings;
+
+            if (!bookings || bookings.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-500);">No upcoming bookings</p>';
+                return;
+            }
+
+            // Filter future bookings and sort
+            const now = new Date();
+            const futureBookings = bookings
+                .filter(b => new Date(b.enter) >= now)
+                .sort((a, b) => new Date(a.enter) - new Date(b.enter))
+                .slice(0, 5);
+
+            if (futureBookings.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-500);">No upcoming bookings</p>';
+                return;
+            }
+
+            container.innerHTML = futureBookings.map(b => {
+                const date = new Date(b.enter);
+                const dateStr = date.toLocaleDateString('en-GB', {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short'
+                });
+                return `
+                    <div class="booking-item">
+                        <div>
+                            <div class="booking-date">${dateStr}</div>
+                            <div class="booking-desk">${b.spaceName || b.space?.name || 'Unknown desk'}</div>
+                        </div>
+                        <button class="btn btn-sm btn-secondary" onclick="deleteBooking('${b.id}')">Cancel</button>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = '<p style="color: var(--danger);">Failed to load bookings</p>';
+        }
+    }
+
+    async function deleteBooking(id) {
+        if (!confirm('Cancel this booking?')) return;
+
+        try {
+            const result = await api('DELETE', `/bookings/${id}`);
+            if (result.success) {
+                showToast('Booking cancelled');
+                await loadMyBookings();
+                await loadDesks();
+            } else {
+                showToast(result.error || 'Failed to cancel');
+            }
+        } catch (e) {
+            showToast('Failed to cancel booking');
+        }
+    }
+
+    // Close modal on background click
+    document.getElementById('desk-modal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) {
+            closeModal();
+        }
+    });
+</script>
+{% endblock %}

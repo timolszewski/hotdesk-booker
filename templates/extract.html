@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Re-authenticate</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: white;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 420px;
+            width: 100%;
+            color: #333;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 8px; color: #667eea; }
+        .subtitle { color: #6b7280; margin-bottom: 24px; }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 24px auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status { color: #6b7280; margin-bottom: 16px; }
+        .step {
+            display: flex; align-items: flex-start; gap: 12px;
+            padding: 12px; background: #f9fafb; border-radius: 8px;
+            margin-bottom: 8px; text-align: left;
+        }
+        .step-num {
+            width: 28px; height: 28px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 600; flex-shrink: 0;
+            background: #667eea; color: white;
+        }
+        .step-content { flex: 1; }
+        .step-title { font-weight: 600; margin-bottom: 4px; }
+        .step-desc { font-size: 0.875rem; color: #6b7280; }
+        .btn {
+            display: inline-block; padding: 14px 28px;
+            background: #667eea; color: white; border: none;
+            border-radius: 8px; font-size: 1rem; font-weight: 600;
+            cursor: pointer; text-decoration: none; width: 100%;
+            margin-top: 8px;
+        }
+        .btn:hover { background: #5a67d8; }
+        .btn-success { background: #10b981; }
+        .btn-success:hover { background: #059669; }
+        .btn-outline {
+            background: transparent; border: 2px solid #667eea;
+            color: #667eea;
+        }
+        .btn-outline:hover { background: #667eea; color: white; }
+        .code-box {
+            background: #1f2937; color: #10b981; padding: 12px;
+            border-radius: 8px; font-family: monospace; font-size: 0.7rem;
+            word-break: break-all; text-align: left; margin: 12px 0;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute; top: 8px; right: 8px;
+            background: #374151; border: none; color: white;
+            padding: 4px 8px; border-radius: 4px; cursor: pointer;
+            font-size: 0.7rem;
+        }
+        .copy-btn:hover { background: #4b5563; }
+        .msg { padding: 12px; border-radius: 8px; margin-top: 16px; }
+        .msg-error { color: #ef4444; background: #fef2f2; }
+        .msg-success { color: #10b981; background: #ecfdf5; }
+        textarea {
+            width: 100%; padding: 12px; border: 2px solid #e5e7eb;
+            border-radius: 8px; font-family: monospace; font-size: 0.8rem;
+            resize: vertical; min-height: 100px; margin-top: 12px;
+        }
+        textarea:focus { border-color: #667eea; outline: none; }
+        .hidden { display: none !important; }
+        kbd {
+            background: #e5e7eb; padding: 2px 6px; border-radius: 4px;
+            font-family: monospace; font-size: 0.85em;
+        }
+        .divider {
+            display: flex; align-items: center; margin: 20px 0;
+            color: #9ca3af; font-size: 0.875rem;
+        }
+        .divider::before, .divider::after {
+            content: ''; flex: 1; height: 1px; background: #e5e7eb;
+        }
+        .divider::before { margin-right: 12px; }
+        .divider::after { margin-left: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Re-authenticate</h1>
+        <p class="subtitle">Connect to hotdesk.speednet.pl</p>
+
+        <!-- Phase 1: Instructions -->
+        <div id="phase-instructions">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-title">Open Hotdesk</div>
+                    <div class="step-desc">Click the button below to open hotdesk.speednet.pl. Log in if needed.</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-title">Copy Token</div>
+                    <div class="step-desc">Once logged in, open DevTools Console and run a simple command.</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-title">Paste & Done</div>
+                    <div class="step-desc">Paste the token here and you're connected!</div>
+                </div>
+            </div>
+
+            <button class="btn" onclick="startProcess()">
+                Open hotdesk.speednet.pl
+            </button>
+        </div>
+
+        <!-- Phase 2: Waiting for login & token -->
+        <div id="phase-waiting" class="hidden">
+            <div class="spinner"></div>
+            <p class="status">Hotdesk opened in a new tab.<br>Log in if needed, then follow the steps below.</p>
+
+            <div style="text-align: left; margin-top: 20px;">
+                <p style="font-weight: 600; margin-bottom: 12px;">In the hotdesk tab:</p>
+
+                <!-- Method 1: Network Tab (Most Reliable) -->
+                <div style="background: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                    <p style="font-weight: 600; color: #059669; margin-bottom: 8px;">Recommended: Network Tab</p>
+                    <ol style="color: #6b7280; font-size: 0.85rem; padding-left: 20px; line-height: 1.8;">
+                        <li>Make sure you're <strong>logged in</strong> (see the desk map)</li>
+                        <li>Press <kbd>Cmd+Option+I</kbd> (Mac) or <kbd>F12</kbd> (Windows)</li>
+                        <li>Go to <strong>Network</strong> tab</li>
+                        <li>Refresh the page (<kbd>Cmd+R</kbd>)</li>
+                        <li>Click on any request (e.g. "availability" or "booking")</li>
+                        <li>In Headers, find <strong>Authorization: Bearer eyJ...</strong></li>
+                        <li>Copy everything after "Bearer " (the long eyJ... string)</li>
+                    </ol>
+                </div>
+
+                <!-- Method 2: Console Command (Backup) -->
+                <details style="margin-bottom: 16px;">
+                    <summary style="cursor: pointer; color: #667eea; font-weight: 500;">Alternative: Console Command</summary>
+                    <div style="margin-top: 12px;">
+                        <ol style="color: #6b7280; font-size: 0.85rem; padding-left: 20px; line-height: 1.8;">
+                            <li>Open DevTools → <strong>Console</strong> tab</li>
+                            <li>Paste this command and press Enter:</li>
+                        </ol>
+                        <div class="code-box">
+                            <button class="copy-btn" onclick="copyCommand()">Copy</button>
+                            <span id="cmd">(function(){for(let k of Object.keys(localStorage)){try{let o=JSON.parse(localStorage[k]);if(o.accessToken){copy(o.accessToken);return 'Copied!'}}catch(e){}}return 'Not found'})()</span>
+                        </div>
+                    </div>
+                </details>
+
+                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 8px;">
+                    Paste the token here (starts with <code>eyJ</code>):
+                </p>
+                <textarea id="token-input" placeholder="eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9..."></textarea>
+
+                <button class="btn btn-success" onclick="submitToken()">
+                    Save Token & Connect
+                </button>
+
+                <div class="divider">or</div>
+
+                <button class="btn btn-outline" onclick="openHotdeskAgain()">
+                    Open Hotdesk Again
+                </button>
+            </div>
+
+            <div id="result"></div>
+        </div>
+
+        <!-- Phase 3: Success -->
+        <div id="phase-success" class="hidden">
+            <div style="font-size: 64px; margin: 20px 0;">✓</div>
+            <h2 style="color: #10b981; margin-bottom: 8px;">Connected!</h2>
+            <p class="status">Token saved successfully.</p>
+            <button class="btn btn-success" onclick="closeWindow()">
+                Close & Return
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let hotdeskWindow = null;
+
+        function startProcess() {
+            document.getElementById('phase-instructions').classList.add('hidden');
+            document.getElementById('phase-waiting').classList.remove('hidden');
+            openHotdeskAgain();
+        }
+
+        function openHotdeskAgain() {
+            hotdeskWindow = window.open('https://hotdesk.speednet.pl', 'hotdesk_login');
+            if (!hotdeskWindow) {
+                showResult('Popup blocked! Please allow popups for this site.', 'error');
+            }
+        }
+
+        function copyCommand() {
+            const cmd = document.getElementById('cmd').textContent;
+            navigator.clipboard.writeText(cmd);
+            const btn = document.querySelector('.copy-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 2000);
+        }
+
+        async function submitToken() {
+            const token = document.getElementById('token-input').value.trim();
+
+            if (!token) {
+                showResult('Please paste the token first', 'error');
+                return;
+            }
+
+            if (token.length < 100 || !token.startsWith('eyJ')) {
+                showResult('This doesn\'t look like a valid token. It should start with "eyJ" and be very long.', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/auth/tokens', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_token: token })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Give the backend a moment to save
+                    await new Promise(r => setTimeout(r, 500));
+
+                    // Verify it works
+                    const statusResp = await fetch('/api/auth/status');
+                    const status = await statusResp.json();
+
+                    if (status.authenticated) {
+                        // Success!
+                        document.getElementById('phase-waiting').classList.add('hidden');
+                        document.getElementById('phase-success').classList.remove('hidden');
+
+                        // Notify parent window
+                        if (window.opener) {
+                            window.opener.postMessage({ type: 'hotdesk_token', token: token }, '*');
+                        }
+
+                        // Close hotdesk window
+                        if (hotdeskWindow && !hotdeskWindow.closed) {
+                            hotdeskWindow.close();
+                        }
+                    } else {
+                        // Token was saved, let's check if it's valid by testing directly
+                        showResult('Token saved. Verifying...', 'success');
+                        // Refresh to re-check
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                } else {
+                    throw new Error(result.error || 'Failed to save token');
+                }
+            } catch (e) {
+                showResult('Error: ' + e.message, 'error');
+            }
+        }
+
+        function showResult(message, type) {
+            const result = document.getElementById('result');
+            result.innerHTML = `<div class="msg msg-${type}">${message}</div>`;
+        }
+
+        function closeWindow() {
+            // Notify parent and close
+            if (window.opener) {
+                window.opener.postMessage({ type: 'hotdesk_reauth_complete' }, '*');
+            }
+            window.close();
+
+            // If window doesn't close (some browsers block it), show message
+            setTimeout(() => {
+                document.querySelector('#phase-success p').textContent = 'You can close this tab now.';
+            }, 500);
+        }
+    </script>
+</body>
+</html>

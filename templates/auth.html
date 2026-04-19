@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Authentication{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1>Authentication</h1>
+</header>
+
+<div class="container">
+    <!-- Status -->
+    <div class="card">
+        <div class="card-title">Connection Status</div>
+        <div id="auth-status-detail">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+
+    <!-- One-Click Re-authenticate -->
+    <div class="card" id="reauth-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+        <div class="card-title" style="color: white;">Re-Authenticate</div>
+        <p style="opacity: 0.95; margin-bottom: 16px;">
+            Opens hotdesk.speednet.pl where you can log in (if needed) and grab a fresh token.
+        </p>
+        <button class="btn" id="reauth-btn" onclick="startReauth()"
+                style="background: white; color: #764ba2; font-weight: 600; width: 100%; padding: 16px;">
+            Re-Authenticate Now
+        </button>
+        <div id="reauth-status" style="margin-top: 12px; text-align: center; display: none;"></div>
+    </div>
+
+    <!-- Manual fallback -->
+    <div class="card">
+        <div class="card-title">Manual Method (if auto fails)</div>
+        <details>
+            <summary style="cursor: pointer; color: var(--primary); font-weight: 500;">Show manual instructions</summary>
+            <div style="margin-top: 12px;">
+                <ol style="padding-left: 20px; color: var(--gray-700); line-height: 1.8;">
+                    <li>Go to <a href="https://hotdesk.speednet.pl" target="_blank" style="color: var(--primary);">hotdesk.speednet.pl</a> (make sure you're logged in)</li>
+                    <li>Open DevTools (Cmd+Option+I or F12)</li>
+                    <li>Go to <strong>Console</strong> tab</li>
+                    <li>Paste this and press Enter:</li>
+                </ol>
+                <div style="background: var(--gray-100); padding: 12px; border-radius: 8px; margin-top: 8px; overflow-x: auto;">
+                    <code id="console-cmd" style="font-size: 0.75rem; word-break: break-all; user-select: all;">copy(Object.values(localStorage).find(v=>v&&v.length>100)||'No token found')</code>
+                </div>
+                <button class="btn btn-secondary" style="margin-top: 8px;" onclick="navigator.clipboard.writeText(document.getElementById('console-cmd').textContent); showToast('Command copied!');">
+                    Copy Command
+                </button>
+            </div>
+        </details>
+    </div>
+
+    <!-- Token Input -->
+    <div class="card">
+        <div class="card-title">Update Tokens</div>
+
+        <div class="form-group">
+            <label class="form-label">Access Token</label>
+            <textarea id="access-token" class="form-input" rows="3"
+                placeholder="eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9..."></textarea>
+            <p style="color: var(--gray-500); font-size: 0.75rem; margin-top: 4px;">
+                The JWT token from the Authorization header
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Refresh Token (Optional)</label>
+            <input type="text" id="refresh-token" class="form-input"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <p style="color: var(--gray-500); font-size: 0.75rem; margin-top: 4px;">
+                UUID format. Found in /auth/refresh response or request payload.
+            </p>
+        </div>
+
+        <button class="btn btn-primary btn-block" onclick="saveTokens()">
+            Save Tokens
+        </button>
+    </div>
+
+    <!-- Refresh Button -->
+    <div class="card">
+        <div class="card-title">Token Actions</div>
+        <button class="btn btn-secondary btn-block" onclick="refreshToken()">
+            Force Token Refresh
+        </button>
+        <p style="color: var(--gray-500); font-size: 0.75rem; margin-top: 8px;">
+            Try to refresh the access token using the stored refresh token.
+        </p>
+    </div>
+
+    <!-- Current Tokens (debug) -->
+    <div class="card">
+        <div class="card-title">Current Token Info</div>
+        <div id="token-info" style="font-family: monospace; font-size: 0.75rem; word-break: break-all;">
+            Loading...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let reauthWindow = null;
+    let reauthCheckInterval = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        checkAuthStatus();
+
+        // Listen for messages from the token extractor
+        window.addEventListener('message', handleTokenMessage);
+    });
+
+    async function checkAuthStatus() {
+        const container = document.getElementById('auth-status-detail');
+        const tokenInfo = document.getElementById('token-info');
+        const reauthCard = document.getElementById('reauth-card');
+
+        try {
+            const result = await api('GET', '/auth/status');
+
+            if (result.authenticated) {
+                container.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 12px; height: 12px; background: var(--success); border-radius: 50%;"></div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--success);">Connected</div>
+                            <div style="color: var(--gray-500); font-size: 0.875rem;">
+                                ${result.user?.email || 'Unknown user'}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-100);">
+                        <div style="font-size: 0.875rem; color: var(--gray-500);">
+                            Last updated: ${result.token_updated ? new Date(result.token_updated).toLocaleString() : 'Unknown'}
+                        </div>
+                    </div>
+                `;
+
+                // Show token expiry info
+                if (result.user && tokenInfo) {
+                    tokenInfo.innerHTML = `
+                        <p><strong>User ID:</strong> ${result.user.id || 'N/A'}</p>
+                        <p><strong>Email:</strong> ${result.user.email || 'N/A'}</p>
+                        <p><strong>Role:</strong> ${result.user.role || 'N/A'}</p>
+                    `;
+                }
+
+                // Update reauth button to show success state
+                reauthCard.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                document.getElementById('reauth-btn').textContent = 'Re-Authenticate (Connected)';
+            } else {
+                container.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 12px; height: 12px; background: var(--danger); border-radius: 50%;"></div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--danger);">Not Connected</div>
+                            <div style="color: var(--gray-500); font-size: 0.875rem;">
+                                Click "Re-Authenticate Now" below
+                            </div>
+                        </div>
+                    </div>
+                `;
+                if (tokenInfo) tokenInfo.textContent = 'No valid tokens';
+
+                // Reset reauth button
+                reauthCard.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                document.getElementById('reauth-btn').textContent = 'Re-Authenticate Now';
+            }
+        } catch (e) {
+            container.innerHTML = `
+                <div style="color: var(--danger);">Failed to check status</div>
+            `;
+            if (tokenInfo) tokenInfo.textContent = 'Error checking tokens';
+        }
+    }
+
+    function startReauth() {
+        const btn = document.getElementById('reauth-btn');
+        const status = document.getElementById('reauth-status');
+
+        btn.disabled = true;
+        btn.textContent = 'Opening hotdesk.speednet.pl...';
+        status.style.display = 'block';
+        status.innerHTML = '<div class="spinner" style="margin: 0 auto;"></div><p style="margin-top: 8px;">Waiting for authentication...</p>';
+
+        // Open the token extractor page
+        const extractorUrl = '/auth/extract';
+        reauthWindow = window.open(extractorUrl, 'hotdesk_auth', 'width=500,height=600,scrollbars=yes');
+
+        // Check periodically if token was received
+        let attempts = 0;
+        const maxAttempts = 120; // 2 minutes
+
+        reauthCheckInterval = setInterval(async () => {
+            attempts++;
+
+            // Check if window was closed
+            if (reauthWindow && reauthWindow.closed) {
+                clearInterval(reauthCheckInterval);
+                // Check if we got authenticated
+                await checkAuthStatus();
+                const result = await api('GET', '/auth/status');
+                if (result.authenticated) {
+                    status.innerHTML = '<p style="color: #10b981;">Authentication successful!</p>';
+                    btn.textContent = 'Re-Authenticate (Connected)';
+                } else {
+                    status.innerHTML = '<p style="color: #ef4444;">Window closed. Try again or use manual method.</p>';
+                    btn.textContent = 'Re-Authenticate Now';
+                }
+                btn.disabled = false;
+                return;
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(reauthCheckInterval);
+                if (reauthWindow) reauthWindow.close();
+                status.innerHTML = '<p style="color: #ef4444;">Timeout. Please try the manual method.</p>';
+                btn.disabled = false;
+                btn.textContent = 'Re-Authenticate Now';
+            }
+        }, 1000);
+    }
+
+    async function handleTokenMessage(event) {
+        // Accept messages from our extractor page
+        if (event.data && event.data.type === 'hotdesk_token') {
+            const token = event.data.token;
+
+            if (token && token.length > 100) {
+                showToast('Token captured successfully!');
+
+                // Clean up
+                if (reauthCheckInterval) clearInterval(reauthCheckInterval);
+                if (reauthWindow && !reauthWindow.closed) reauthWindow.close();
+
+                // Update UI
+                const status = document.getElementById('reauth-status');
+                status.innerHTML = '<p style="color: white;">Connected!</p>';
+                document.getElementById('reauth-btn').disabled = false;
+                document.getElementById('reauth-btn').textContent = 'Re-Authenticate (Connected)';
+
+                await checkAuthStatus();
+            }
+        }
+
+        // Handle completion message
+        if (event.data && event.data.type === 'hotdesk_reauth_complete') {
+            if (reauthCheckInterval) clearInterval(reauthCheckInterval);
+            document.getElementById('reauth-btn').disabled = false;
+            await checkAuthStatus();
+        }
+    }
+
+    async function saveTokens() {
+        const accessToken = document.getElementById('access-token').value.trim();
+        const refreshToken = document.getElementById('refresh-token').value.trim();
+
+        if (!accessToken && !refreshToken) {
+            showToast('Please enter at least one token');
+            return;
+        }
+
+        try {
+            const data = {};
+            if (accessToken) data.access_token = accessToken;
+            if (refreshToken) data.refresh_token = refreshToken;
+
+            const result = await api('POST', '/auth/tokens', data);
+
+            if (result.success) {
+                showToast('Tokens saved successfully!');
+                document.getElementById('access-token').value = '';
+                document.getElementById('refresh-token').value = '';
+                await checkAuthStatus();
+            } else {
+                showToast(result.error || 'Failed to save tokens');
+            }
+        } catch (e) {
+            showToast('Failed to save tokens');
+        }
+    }
+
+    async function refreshToken() {
+        showToast('Refreshing token...');
+
+        try {
+            const result = await api('POST', '/auth/refresh');
+
+            if (result.success) {
+                showToast('Token refreshed successfully!');
+                await checkAuthStatus();
+            } else {
+                showToast(result.error || 'Failed to refresh token');
+            }
+        } catch (e) {
+            showToast('Failed to refresh token');
+        }
+    }
+</script>
+{% endblock %}

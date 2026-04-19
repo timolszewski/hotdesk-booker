@@ -1,0 +1,26 @@
+# Data files with secrets
+data/tokens.json
+data/config.json
+data/ngrok_url.txt
+data/browser_session/
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store

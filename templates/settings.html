@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1>Settings</h1>
+</header>
+
+<div class="container">
+    <!-- Booking Subject -->
+    <div class="card">
+        <div class="card-title">Reservation Title</div>
+        <div class="form-group">
+            <input type="text" id="booking-subject" class="form-input" placeholder="e.g., Tim codziennie w biurze">
+        </div>
+    </div>
+
+    <!-- Preferred Desks -->
+    <div class="card">
+        <div class="card-title">Preferred Desks (Priority Order)</div>
+        <p style="color: var(--gray-500); font-size: 0.875rem; margin-bottom: 12px;">
+            Tap desks in order of preference. First desk has highest priority.
+        </p>
+        <div id="desk-selector" class="chips">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+        <div style="margin-top: 16px;">
+            <strong>Current priority:</strong>
+            <div id="priority-list" style="margin-top: 8px; color: var(--primary); font-weight: 500;">
+                Loading...
+            </div>
+            <button class="btn btn-sm btn-secondary" style="margin-top: 8px;" onclick="clearPriority()">
+                Clear Selection
+            </button>
+        </div>
+    </div>
+
+    <!-- Schedule -->
+    <div class="card">
+        <div class="card-title">Auto-Booking Schedule</div>
+
+        <div class="form-group">
+            <label class="form-label">
+                <input type="checkbox" id="auto-book-enabled" style="margin-right: 8px;">
+                Enable automatic booking
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Booking Time</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="number" id="schedule-hour" class="form-input" min="0" max="23" style="width: 80px;">
+                <span>:</span>
+                <input type="number" id="schedule-minute" class="form-input" min="0" max="59" style="width: 80px;">
+            </div>
+            <p style="color: var(--gray-500); font-size: 0.75rem; margin-top: 4px;">
+                Time in Europe/Warsaw timezone. Default is 00:01 (just after midnight).
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Days to Book</label>
+            <div class="chips" id="days-selector">
+                <div class="chip" data-day="1">Mon</div>
+                <div class="chip" data-day="2">Tue</div>
+                <div class="chip" data-day="3">Wed</div>
+                <div class="chip" data-day="4">Thu</div>
+                <div class="chip" data-day="5">Fri</div>
+                <div class="chip" data-day="6">Sat</div>
+                <div class="chip" data-day="0">Sun</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Button -->
+    <button class="btn btn-primary btn-block" id="save-btn" onclick="saveSettings()">
+        Save Settings
+    </button>
+
+    <!-- Manual Booking -->
+    <div class="card" style="margin-top: 24px;">
+        <div class="card-title">Manual Actions</div>
+        <button class="btn btn-secondary btn-block" onclick="bookNow()">
+            Book Tomorrow Now
+        </button>
+        <p style="color: var(--gray-500); font-size: 0.75rem; margin-top: 8px;">
+            Manually trigger booking for tomorrow using your preferred desks.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let config = {};
+    let selectedDesks = [];
+    let selectedDays = [];
+    let allDesks = [];
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadConfig();
+        await loadAllDesks();
+        setupDaySelector();
+    });
+
+    async function loadConfig() {
+        try {
+            config = await api('GET', '/config');
+
+            document.getElementById('booking-subject').value = config.booking_subject || '';
+            document.getElementById('schedule-hour').value = config.schedule_hour ?? 0;
+            document.getElementById('schedule-minute').value = config.schedule_minute ?? 1;
+            document.getElementById('auto-book-enabled').checked = config.auto_book_enabled !== false;
+
+            selectedDesks = [...(config.preferred_desks || [])];
+            selectedDays = [...(config.schedule_days || [1, 2, 3, 4, 5])];
+
+            updatePriorityList();
+        } catch (e) {
+            showToast('Failed to load settings');
+        }
+    }
+
+    async function loadAllDesks() {
+        const container = document.getElementById('desk-selector');
+
+        try {
+            // Get today's desks just to get the list
+            const today = new Date().toISOString().split('T')[0];
+            const result = await api('GET', `/desks?date=${today}`);
+            allDesks = result.desks || [];
+
+            // Sort by name
+            allDesks.sort((a, b) => a.name.localeCompare(b.name));
+
+            // Filter to allowed desks only
+            const allowedDesks = allDesks.filter(d => d.allowed);
+
+            container.innerHTML = allowedDesks.map(desk => {
+                const shortName = desk.name.split(' ')[0];
+                const isSelected = selectedDesks.includes(desk.name) || selectedDesks.includes(shortName);
+                return `
+                    <div class="chip ${isSelected ? 'selected' : ''}"
+                         data-desk="${desk.name}"
+                         onclick="toggleDesk('${desk.name}')">
+                        ${shortName}
+                    </div>
+                `;
+            }).join('');
+
+            updateChipOrder();
+        } catch (e) {
+            container.innerHTML = '<p style="color: var(--danger);">Failed to load desks</p>';
+        }
+    }
+
+    function toggleDesk(name) {
+        const shortName = name.split(' ')[0];
+        const index = selectedDesks.findIndex(d => d === name || d === shortName || d.startsWith(shortName));
+
+        if (index >= 0) {
+            selectedDesks.splice(index, 1);
+        } else {
+            selectedDesks.push(shortName);
+        }
+
+        updatePriorityList();
+        updateChipOrder();
+    }
+
+    function updatePriorityList() {
+        const list = document.getElementById('priority-list');
+        if (selectedDesks.length === 0) {
+            list.textContent = 'No desks selected';
+            list.style.color = 'var(--gray-500)';
+        } else {
+            list.textContent = selectedDesks.join(' → ');
+            list.style.color = 'var(--primary)';
+        }
+    }
+
+    function updateChipOrder() {
+        const chips = document.querySelectorAll('#desk-selector .chip');
+        chips.forEach(chip => {
+            const name = chip.dataset.desk;
+            const shortName = name.split(' ')[0];
+            const rank = selectedDesks.findIndex(d => d === name || d === shortName || name.startsWith(d));
+
+            chip.classList.toggle('selected', rank >= 0);
+
+            if (rank >= 0) {
+                chip.style.order = rank;
+                chip.innerHTML = `<span style="font-size: 0.75rem; margin-right: 4px;">${rank + 1}.</span>${shortName}`;
+            } else {
+                chip.style.order = 999;
+                chip.textContent = shortName;
+            }
+        });
+    }
+
+    function clearPriority() {
+        selectedDesks = [];
+        updatePriorityList();
+        updateChipOrder();
+    }
+
+    function setupDaySelector() {
+        const chips = document.querySelectorAll('#days-selector .chip');
+        chips.forEach(chip => {
+            const day = parseInt(chip.dataset.day);
+            chip.classList.toggle('selected', selectedDays.includes(day));
+
+            chip.onclick = () => {
+                const index = selectedDays.indexOf(day);
+                if (index >= 0) {
+                    selectedDays.splice(index, 1);
+                } else {
+                    selectedDays.push(day);
+                }
+                chip.classList.toggle('selected');
+            };
+        });
+    }
+
+    async function saveSettings() {
+        const btn = document.getElementById('save-btn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        try {
+            const newConfig = {
+                booking_subject: document.getElementById('booking-subject').value,
+                preferred_desks: selectedDesks,
+                schedule_hour: parseInt(document.getElementById('schedule-hour').value) || 0,
+                schedule_minute: parseInt(document.getElementById('schedule-minute').value) || 1,
+                schedule_days: selectedDays.sort(),
+                auto_book_enabled: document.getElementById('auto-book-enabled').checked
+            };
+
+            const result = await api('POST', '/config', newConfig);
+
+            if (result.success) {
+                showToast('Settings saved successfully!');
+            } else {
+                showToast(result.error || 'Failed to save settings');
+            }
+        } catch (e) {
+            showToast('Failed to save settings');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save Settings';
+        }
+    }
+
+    async function bookNow() {
+        if (!confirm('Book a desk for tomorrow now?')) return;
+
+        showToast('Booking in progress...');
+
+        try {
+            const result = await api('POST', '/book-now');
+            if (result.success) {
+                showToast('Booking successful!');
+            } else {
+                showToast(result.error || 'Booking failed');
+            }
+        } catch (e) {
+            showToast('Booking failed');
+        }
+    }
+</script>
+{% endblock %}

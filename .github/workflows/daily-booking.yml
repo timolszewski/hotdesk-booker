@@ -1,0 +1,63 @@
+name: Daily Hotdesk Booking
+
+on:
+  schedule:
+    # Run at 00:01 Warsaw time (UTC+2 in summer, UTC+1 in winter)
+    # Using 22:01 UTC to account for CEST (UTC+2)
+    # Note: Adjust to 23:01 UTC during winter (CET)
+    - cron: '1 22 * * 0-4'  # Sun-Thu at 22:01 UTC = Mon-Fri 00:01 CEST
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      dry_run:
+        description: 'Dry run (do not actually book)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  HOTDESK_BASE_URL: https://hotdesk.speednet.pl
+  LOCATION_ID: 8f78f4e5-1cd6-40b7-a91e-34cab6768732
+  PREFERRED_DESKS: S05,S15,S10,S14
+  BOOKING_SUBJECT: "Tim codziennie w biurze"
+
+jobs:
+  book-desk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Get current time info
+        run: |
+          echo "Current UTC time: $(date -u)"
+          echo "Target booking date: $(date -u -d 'tomorrow' +%Y-%m-%d)"
+
+      - name: Run booking script
+        env:
+          REFRESH_TOKEN: ${{ secrets.HOTDESK_REFRESH_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python .github/scripts/book_desk.py
+
+      - name: Update refresh token secret (if rotated)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          NEW_REFRESH_TOKEN: ${{ env.NEW_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$NEW_REFRESH_TOKEN" ] && [ -n "$GH_TOKEN" ]; then
+            echo "Updating rotated refresh token..."
+            gh secret set HOTDESK_REFRESH_TOKEN --body "$NEW_REFRESH_TOKEN"
+            echo "Refresh token updated successfully"
+          else
+            echo "No token rotation needed or GH_PAT not configured"
+          fi

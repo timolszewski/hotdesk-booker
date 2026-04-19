@@ -1,0 +1,20 @@
+version: '3.8'
+
+# Simple version - just runs the built-in scheduler
+# Use this if you don't need ofelia cron
+
+services:
+  hotdesk-booker:
+    build: .
+    container_name: hotdesk-booker
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Warsaw
+      - SCHEDULE_HOUR=0
+      - SCHEDULE_MINUTE=1
+      - PREFERRED_DESKS=S05,S15,S10,S14
+      - BOOKING_SUBJECT=Tim codziennie w biurze
+      - TOKEN_FILE=/app/data/tokens.json
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs

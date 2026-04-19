@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  hotdesk-booker:
+    build: .
+    container_name: hotdesk-booker
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - TZ=Europe/Warsaw
+      - MODE=both  # web, scheduler, or both
+      - SCHEDULE_HOUR=0
+      - SCHEDULE_MINUTE=1
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/config"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
