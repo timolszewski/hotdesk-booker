@@ -20,6 +20,9 @@ BOOKING_SUBJECT = os.environ.get('BOOKING_SUBJECT', 'Tim codziennie w biurze')
 REFRESH_TOKEN = os.environ.get('REFRESH_TOKEN')
 DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'
 
+# Fallback: try to read from committed file if env var token fails
+TOKEN_FILE = '.github/data/refresh_token.txt'
+
 
 def log(message: str):
     """Log with timestamp."""
@@ -181,8 +184,15 @@ def main():
     if DRY_RUN:
         log("*** DRY RUN MODE - No actual booking will be made ***")
 
-    if not REFRESH_TOKEN:
-        log("ERROR: REFRESH_TOKEN not set")
+    # Try to get refresh token from env or fallback to file
+    refresh_token = REFRESH_TOKEN
+    if not refresh_token and os.path.exists(TOKEN_FILE):
+        log(f"Reading refresh token from {TOKEN_FILE}")
+        with open(TOKEN_FILE) as f:
+            refresh_token = f.read().strip()
+
+    if not refresh_token:
+        log("ERROR: REFRESH_TOKEN not set and no token file found")
         sys.exit(1)
 
     log(f"Base URL: {BASE_URL}")
@@ -190,15 +200,15 @@ def main():
     log(f"Preferred desks: {PREFERRED_DESKS}")
 
     # Step 1: Refresh token
-    result = refresh_access_token(REFRESH_TOKEN)
+    result = refresh_access_token(refresh_token)
     if not result:
         log("FATAL: Could not refresh access token")
         sys.exit(1)
 
     access_token, new_refresh_token = result
 
-    # Export new refresh token for GitHub Action to update secret
-    if new_refresh_token and new_refresh_token != REFRESH_TOKEN:
+    # Export new refresh token for GitHub Action to update
+    if new_refresh_token and new_refresh_token != refresh_token:
         log(f"Refresh token rotated: {new_refresh_token[:8]}...")
         set_github_output('NEW_REFRESH_TOKEN', new_refresh_token)
 
