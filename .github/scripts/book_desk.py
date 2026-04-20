@@ -123,8 +123,11 @@ def book_desk(access_token: str, space_id: str, date: datetime) -> bool:
     )
 
     if response.status_code == 201:
-        booking = response.json()
-        log(f"Booking created successfully: {booking.get('id')}")
+        try:
+            booking = response.json()
+            log(f"Booking created successfully: {booking.get('id')}")
+        except Exception:
+            log("Booking created successfully (no response body)")
         return True
     else:
         log(f"Booking failed: {response.status_code}")
