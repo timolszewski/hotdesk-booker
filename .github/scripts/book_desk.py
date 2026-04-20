@@ -219,6 +219,11 @@ def main():
     tomorrow = datetime.now(tz=None) + timedelta(days=1)
     log(f"Booking for: {tomorrow.strftime('%Y-%m-%d')} ({tomorrow.strftime('%A')})")
 
+    # Skip weekends (Saturday=5, Sunday=6)
+    if tomorrow.weekday() >= 5:
+        log("Tomorrow is weekend - skipping booking (token refreshed)")
+        sys.exit(0)
+
     # Step 3: Check if already booked
     bookings = get_my_bookings(access_token)
     if has_booking_for_date(bookings, tomorrow):
@@ -228,8 +233,8 @@ def main():
     # Step 4: Get available desks
     available = get_available_desks(access_token, tomorrow)
     if not available:
-        log("No desks available for tomorrow")
-        sys.exit(1)
+        log("No desks available for tomorrow (all booked)")
+        sys.exit(0)  # Not a failure, just no availability
 
     # Step 5: Select best desk
     desk = select_best_desk(available)

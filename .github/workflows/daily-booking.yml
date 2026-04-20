@@ -4,8 +4,8 @@ on:
   schedule:
     # Run at 00:01 Warsaw time (UTC+2 in summer, UTC+1 in winter)
     # Using 22:01 UTC to account for CEST (UTC+2)
-    # Note: Adjust to 23:01 UTC during winter (CET)
-    - cron: '1 22 * * 0-4'  # Sun-Thu at 22:01 UTC = Mon-Fri 00:01 CEST
+    # Runs daily to keep refresh token alive (skips weekends gracefully)
+    - cron: '1 22 * * *'  # Every day at 22:01 UTC = 00:01 CEST
   workflow_dispatch:  # Allow manual trigger
     inputs:
       dry_run:
