@@ -2,7 +2,7 @@
 
 Automatyczne rezerwowanie biurka w Speednet codziennie o 00:01.
 
-## 👉 [KLIKNIJ TUTAJ ABY SKONFIGUROWAĆ](https://timolszewski.github.io/hotdesk-booker/docs/setup.html)
+## 👉 [KLIKNIJ TUTAJ ABY SKONFIGUROWAĆ](https://timolszewski.github.io/hotdesk-booker/)
 
 Konfiguracja zajmuje około 5-10 minut.
 
