@@ -270,19 +270,55 @@ env:
         </div>
     </div>
 
+    <!-- Token Renewal -->
+    <div class="step" style="border: 2px solid #e74c3c;">
+        <span class="step-number" style="background: #e74c3c;">!</span>
+        <h2>Token wygasł? Odnów go tutaj</h2>
+        <div class="step-content">
+            <p>Jeśli rezerwacje przestały działać (błąd 404 w Actions), wykonaj te kroki:</p>
+
+            <div style="background: #ffeaa7; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                <strong>Krok 1:</strong> Otwórz Hotdesk i zaloguj się
+                <br><br>
+                <a href="https://hotdesk.speednet.pl" target="_blank" class="btn btn-orange">Otwórz Hotdesk →</a>
+            </div>
+
+            <div style="background: #dfe6e9; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                <strong>Krok 2:</strong> Będąc na stronie Hotdesk, kliknij zakładkę "📋 Kopiuj Token" na pasku zakładek
+                <br><br>
+                <span class="help-text">Nie masz zakładki? Przeciągnij ją z kroku 3 powyżej.</span>
+            </div>
+
+            <div style="background: #dfe6e9; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                <strong>Krok 3:</strong> Zaktualizuj token w GitHub
+                <ol style="margin: 12px 0;">
+                    <li>Wejdź na <a href="https://github.com" target="_blank">github.com</a> → Twoje repozytorium</li>
+                    <li>Kliknij <strong>Settings</strong> → <strong>Secrets and variables</strong> → <strong>Actions</strong></li>
+                    <li>Przy <code>HOTDESK_REFRESH_TOKEN</code> kliknij ikonę ołówka (✏️)</li>
+                    <li>Wklej nowy token (Ctrl+V / Cmd+V)</li>
+                    <li>Kliknij <strong>"Update secret"</strong></li>
+                </ol>
+            </div>
+
+            <div class="success">
+                ✅ Gotowe! Rezerwacje znów będą działać.
+            </div>
+        </div>
+    </div>
+
     <!-- FAQ -->
     <div class="step">
         <span class="step-number">?</span>
-        <h2>Pytania i problemy</h2>
+        <h2>Inne pytania</h2>
         <div class="step-content">
-            <p><strong>Token wygasł (błąd 404)</strong></p>
-            <p class="help-text">Zaloguj się ponownie do Hotdesk, użyj bookmarkletu "📋 Kopiuj Token" i zaktualizuj secret w GitHub.</p>
-
             <p><strong>Nie widzę zakładki Actions</strong></p>
             <p class="help-text">Upewnij się, że repozytorium jest Twoje (nie oryginalne timolszewski/hotdesk-booker).</p>
 
             <p><strong>Chcę zmienić preferowane biurka</strong></p>
             <p class="help-text">Edytuj plik <code>.github/workflows/daily-booking.yml</code> w swoim repozytorium.</p>
+
+            <p><strong>Jak często wygasa token?</strong></p>
+            <p class="help-text">Token odświeża się automatycznie codziennie. Wygaśnie tylko jeśli zalogujesz się do Hotdesk w innej przeglądarce lub rezerwacje nie działały przez kilka dni.</p>
         </div>
     </div>
 
