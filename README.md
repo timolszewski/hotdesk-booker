@@ -1,121 +1,114 @@
-# Hotdesk Booking Automation
+# Hotdesk Auto-Booker
 
-Automatically books a desk at hotdesk.speednet.pl every day at 00:01.
+Automatically books your preferred desk at hotdesk.speednet.pl every day at 00:01 Warsaw time using GitHub Actions.
 
-## Quick Start
+## Features
 
-### 1. Verify your refresh token is configured
+- Books desk for next workday (Mon-Fri) automatically
+- Configurable desk preferences (tries in order until one is available)
+- Automatic token rotation - no manual token refresh needed
+- Skips weekends but keeps auth token alive
+- Skips if you already have a booking
 
-The token is already set up in `data/tokens.json`. If you need to update it:
+## Setup (5 minutes)
 
-```bash
-# Get your refresh token from browser DevTools:
-# 1. Go to https://hotdesk.speednet.pl
-# 2. Open DevTools > Network
-# 3. Look for /auth/refresh request
-# 4. Copy the refreshToken from request payload
+### 1. Create your own copy
 
-# Update data/tokens.json with your token
+Click **"Use this template"** → **"Create a new repository"** (make it **private**)
+
+Or fork this repo.
+
+### 2. Get your refresh token
+
+1. Open https://hotdesk.speednet.pl in Chrome and **log in**
+2. Open DevTools (F12) → **Application** → **Local Storage** → `https://hotdesk.speednet.pl`
+3. Copy the value of `refreshToken` (looks like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+
+### 3. Configure GitHub secret
+
+1. Go to your repo → **Settings** → **Secrets and variables** → **Actions**
+2. Click **"New repository secret"**
+3. Name: `HOTDESK_REFRESH_TOKEN`
+4. Value: paste your refresh token
+5. Click **"Add secret"**
+
+### 4. Customize your preferences
+
+Edit `.github/workflows/daily-booking.yml`:
+
+```yaml
+env:
+  PREFERRED_DESKS: S05,S15,S10,S14  # Change to your preferred desks in priority order
+  BOOKING_SUBJECT: "Your name here"  # Change to your booking description
 ```
 
-### 2. Test the booking script locally
+Commit and push your changes.
 
-```bash
-cd ~/hotdesk-booker
+### 5. Test it
 
-# Install requests
-pip3 install requests
+1. Go to **Actions** → **"Daily Hotdesk Booking"**
+2. Click **"Run workflow"** → Check **"Dry run"** → **"Run workflow"**
+3. Check the logs to verify it works
 
-# Test run (books for tomorrow)
-python3 booker.py
+Then run again **without** dry run to actually book.
 
-# Book for specific date
-python3 booker.py --date 2026-04-20
-```
-
-### 3. Run with Docker
-
-```bash
-cd ~/hotdesk-booker
-
-# Build and start (simple mode - built-in scheduler)
-docker-compose -f docker-compose.simple.yml up -d --build
-
-# View logs
-docker logs -f hotdesk-booker
-
-# Stop
-docker-compose -f docker-compose.simple.yml down
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PREFERRED_DESKS` | `S05,S15,S10,S14` | Comma-separated desk names in priority order |
-| `BOOKING_SUBJECT` | `Tim codziennie w biurze` | Subject line for booking |
-| `SCHEDULE_HOUR` | `0` | Hour to run (0-23) |
-| `SCHEDULE_MINUTE` | `1` | Minute to run (0-59) |
-| `TZ` | `Europe/Warsaw` | Timezone |
-| `RUN_ONCE` | `false` | Set to `true` for single execution |
-
-### Desk Priority
-
-The script tries to book desks in this order:
-1. First, tries each desk in `PREFERRED_DESKS`
-2. If all preferred desks are taken, falls back to any available `S*` desk
-
-Your current preference: **S05 → S15 → S10 → S14**
-
-## Files
+## How it works
 
 ```
-hotdesk-booker/
-├── booker.py              # Main booking script
-├── Dockerfile             # Container definition
-├── docker-compose.yml     # Full config with ofelia scheduler
-├── docker-compose.simple.yml  # Simple config with built-in scheduler
-├── entrypoint.sh          # Container entrypoint
-├── data/
-│   └── tokens.json        # Your auth tokens (gitignored)
-└── logs/
-    └── booker.log         # Booking logs
+┌─────────────────────────────────────────────────────────────┐
+│  GitHub Actions (runs daily at 00:01 Warsaw time)           │
+├─────────────────────────────────────────────────────────────┤
+│  1. Use refresh token to get access token                   │
+│  2. Check if tomorrow is weekend → skip if yes              │
+│  3. Check if already have booking → skip if yes             │
+│  4. Find first available preferred desk                     │
+│  5. Book it!                                                │
+│  6. Save new rotated refresh token back to repo             │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+The token chain stays alive as long as the workflow runs daily (it runs every day, including weekends, to keep the token fresh).
 
 ## Troubleshooting
 
-### Token expired
-If you see "Failed to refresh token", your refresh token may have expired. Get a new one:
-1. Log in to https://hotdesk.speednet.pl
-2. Open DevTools > Network
-3. Trigger any action or refresh the page
-4. Find the `/auth/refresh` request
-5. Copy the `refreshToken` from the response
-6. Update `data/tokens.json`
+### Token refresh failed (404)
 
-### No available desks
-The script only books desks marked as `allowed: true` for your user.
-Currently, you're allowed to book `S*` desks (S01-S18).
+Your refresh token expired or was already used. This happens if:
+- You logged in elsewhere and the token rotated
+- The workflow didn't run for several days
 
-### Logs
-Check `logs/booker.log` or run:
+**Fix:** Log in to hotdesk.speednet.pl again and update the `HOTDESK_REFRESH_TOKEN` secret with the new token.
+
+### No desks available
+
+All desks are booked for tomorrow. Not an error - the workflow will try again next day.
+
+### Workflow not running
+
+GitHub disables scheduled workflows on inactive repos. Push a commit or manually trigger the workflow to re-enable.
+
+## Available desks
+
+The Speednet office has these desks:
+- `S01` - `S18` (standard desks)
+
+Check the floor plan at https://hotdesk.speednet.pl to pick your favorites.
+
+## Local development
+
 ```bash
-docker logs hotdesk-booker
-```
+# Clone your repo
+git clone git@github.com:YOUR_USERNAME/hotdesk-booker.git
+cd hotdesk-booker
 
-## Manual Booking
+# Install dependencies
+pip install requests
 
-Test the API directly:
+# Set up token (after logging into hotdesk in Chrome)
+python3 chrome_token_sync.py
 
-```bash
-# Refresh token
-curl -X POST https://hotdesk.speednet.pl/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{"refreshToken": "YOUR_REFRESH_TOKEN"}'
-
-# Check availability
-curl "https://hotdesk.speednet.pl/location/8f78f4e5-1cd6-40b7-a91e-34cab6768732/space/availability?enter=2026-04-20T00:00:00.000Z&leave=2026-04-20T23:59:59.000Z" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+# Test booking script
+REFRESH_TOKEN=$(cat data/tokens.json | python3 -c "import sys,json; print(json.load(sys.stdin)['refresh_token'])") \
+DRY_RUN=true \
+python3 .github/scripts/book_desk.py
 ```
