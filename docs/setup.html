@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotdesk Auto-Booker - Setup</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        h1 { color: #2c3e50; text-align: center; }
+        .step {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .step-number {
+            background: #3498db;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+        .step h2 {
+            display: inline;
+            vertical-align: middle;
+        }
+        .step-content { margin-top: 16px; }
+        .btn {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            margin: 8px 4px 8px 0;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover { background: #2980b9; }
+        .btn-green { background: #27ae60; }
+        .btn-green:hover { background: #219a52; }
+        .btn-orange { background: #e67e22; }
+        .btn-orange:hover { background: #d35400; }
+        .bookmarklet {
+            background: #9b59b6;
+            padding: 14px 20px;
+            border-radius: 8px;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            cursor: grab;
+        }
+        .bookmarklet:hover { background: #8e44ad; }
+        code {
+            background: #ecf0f1;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: monospace;
+            overflow-x: auto;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 16px 0;
+        }
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 16px 0;
+        }
+        img {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin: 12px 0;
+        }
+        .help-text { color: #666; font-size: 14px; margin-top: 8px; }
+        .preferences {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .preferences label {
+            display: block;
+            margin: 8px 0 4px;
+            font-weight: 500;
+        }
+        .preferences input, .preferences select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        #token-display {
+            background: #e8f5e9;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            word-break: break-all;
+            display: none;
+        }
+        .time-estimate {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🪑 Hotdesk Auto-Booker</h1>
+    <p style="text-align: center; font-size: 18px;">Automatyczne rezerwowanie biurka codziennie o 00:01</p>
+    <p class="time-estimate">⏱️ Konfiguracja zajmie około 5-10 minut</p>
+
+    <!-- Step 1: GitHub Account -->
+    <div class="step">
+        <span class="step-number">1</span>
+        <h2>Załóż konto GitHub (jeśli nie masz)</h2>
+        <div class="step-content">
+            <p>GitHub to darmowa platforma, która będzie automatycznie rezerwować Twoje biurko każdego dnia.</p>
+            <a href="https://github.com/signup" target="_blank" class="btn">Załóż konto GitHub →</a>
+            <p class="help-text">Masz już konto? Przejdź do kroku 2.</p>
+        </div>
+    </div>
+
+    <!-- Step 2: Create Repo -->
+    <div class="step">
+        <span class="step-number">2</span>
+        <h2>Stwórz swoją kopię auto-bookera</h2>
+        <div class="step-content">
+            <p>Kliknij przycisk poniżej, aby utworzyć własną kopię systemu rezerwacji:</p>
+            <a href="https://github.com/timolszewski/hotdesk-booker/generate" target="_blank" class="btn btn-green">Utwórz moją kopię →</a>
+
+            <div class="warning">
+                <strong>Ważne:</strong> Na następnej stronie:
+                <ul style="margin: 8px 0;">
+                    <li>Wpisz dowolną nazwę (np. <code>moj-hotdesk</code>)</li>
+                    <li>Wybierz <strong>"Private"</strong> (prywatne)</li>
+                    <li>Kliknij <strong>"Create repository"</strong></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Get Token -->
+    <div class="step">
+        <span class="step-number">3</span>
+        <h2>Pobierz swój token z Hotdesk</h2>
+        <div class="step-content">
+            <p><strong>Najpierw</strong> otwórz Hotdesk i zaloguj się:</p>
+            <a href="https://hotdesk.speednet.pl" target="_blank" class="btn">Otwórz Hotdesk →</a>
+
+            <p style="margin-top: 20px;"><strong>Następnie</strong> przeciągnij ten przycisk na pasek zakładek:</p>
+
+            <p style="text-align: center; padding: 20px;">
+                <a class="bookmarklet" href="javascript:(function(){try{var t=localStorage.getItem('refreshToken');if(t){t=t.replace(/&quot;/g,'');navigator.clipboard.writeText(t);alert('✅ Token skopiowany!\n\nTeraz wklej go w GitHub (Ctrl+V lub Cmd+V)\n\nToken: '+t.substring(0,8)+'...');}else{alert('❌ Nie znaleziono tokenu.\n\nUpewnij się, że jesteś zalogowany do Hotdesk.');}}catch(e){alert('Błąd: '+e.message);}})();">📋 Kopiuj Token</a>
+            </p>
+
+            <div class="help-text">
+                <strong>Jak przeciągnąć?</strong>
+                <ol>
+                    <li>Pokaż pasek zakładek: <code>Ctrl+Shift+B</code> (Windows) lub <code>Cmd+Shift+B</code> (Mac)</li>
+                    <li>Przeciągnij fioletowy przycisk "📋 Kopiuj Token" na pasek zakładek</li>
+                    <li>Będąc na stronie Hotdesk, kliknij zakładkę "📋 Kopiuj Token"</li>
+                </ol>
+            </div>
+
+            <div id="token-display"></div>
+        </div>
+    </div>
+
+    <!-- Step 4: Add Secret -->
+    <div class="step">
+        <span class="step-number">4</span>
+        <h2>Dodaj token do GitHub</h2>
+        <div class="step-content">
+            <p>Otwórz ustawienia swojego repozytorium:</p>
+            <ol>
+                <li>Wejdź na <a href="https://github.com" target="_blank">github.com</a></li>
+                <li>Kliknij w swoje nowe repozytorium (np. <code>moj-hotdesk</code>)</li>
+                <li>Kliknij <strong>Settings</strong> (Ustawienia) → <strong>Secrets and variables</strong> → <strong>Actions</strong></li>
+                <li>Kliknij <strong>"New repository secret"</strong></li>
+                <li>Name: <code>HOTDESK_REFRESH_TOKEN</code></li>
+                <li>Secret: wklej token (Ctrl+V / Cmd+V)</li>
+                <li>Kliknij <strong>"Add secret"</strong></li>
+            </ol>
+
+            <div class="success">
+                ✅ Token jest bezpiecznie zaszyfrowany i widoczny tylko dla Ciebie.
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 5: Configure Preferences -->
+    <div class="step">
+        <span class="step-number">5</span>
+        <h2>Ustaw swoje preferencje</h2>
+        <div class="step-content">
+            <p>Edytuj plik z ustawieniami, aby wybrać preferowane biurka:</p>
+            <ol>
+                <li>W swoim repozytorium otwórz plik: <code>.github/workflows/daily-booking.yml</code></li>
+                <li>Kliknij ikonę ołówka (✏️) aby edytować</li>
+                <li>Znajdź sekcję <code>env:</code> i zmień:</li>
+            </ol>
+
+            <div class="code-block">
+env:
+  PREFERRED_DESKS: S05,S15,S10,S14  # Twoje ulubione biurka
+  BOOKING_SUBJECT: "Twoje Imię"     # Opis rezerwacji
+            </div>
+
+            <p class="help-text">
+                <strong>Dostępne biurka:</strong> S01, S02, S03... S18<br>
+                Wpisz je w kolejności od najbardziej do najmniej preferowanego.
+            </p>
+
+            <ol start="4">
+                <li>Kliknij <strong>"Commit changes"</strong> aby zapisać</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Step 6: Test -->
+    <div class="step">
+        <span class="step-number">6</span>
+        <h2>Przetestuj!</h2>
+        <div class="step-content">
+            <p>Sprawdź czy wszystko działa:</p>
+            <ol>
+                <li>W swoim repozytorium kliknij zakładkę <strong>"Actions"</strong></li>
+                <li>Kliknij <strong>"Daily Hotdesk Booking"</strong> po lewej</li>
+                <li>Kliknij <strong>"Run workflow"</strong> → <strong>"Run workflow"</strong></li>
+                <li>Poczekaj ~30 sekund i odśwież stronę</li>
+                <li>Kliknij na uruchomione zadanie aby zobaczyć logi</li>
+            </ol>
+
+            <div class="success">
+                🎉 <strong>Gotowe!</strong> Od teraz biurko będzie rezerwowane automatycznie codziennie o 00:01.
+            </div>
+        </div>
+    </div>
+
+    <!-- FAQ -->
+    <div class="step">
+        <span class="step-number">?</span>
+        <h2>Pytania i problemy</h2>
+        <div class="step-content">
+            <p><strong>Token wygasł (błąd 404)</strong></p>
+            <p class="help-text">Zaloguj się ponownie do Hotdesk, użyj bookmarkletu "📋 Kopiuj Token" i zaktualizuj secret w GitHub.</p>
+
+            <p><strong>Nie widzę zakładki Actions</strong></p>
+            <p class="help-text">Upewnij się, że repozytorium jest Twoje (nie oryginalne timolszewski/hotdesk-booker).</p>
+
+            <p><strong>Chcę zmienić preferowane biurka</strong></p>
+            <p class="help-text">Edytuj plik <code>.github/workflows/daily-booking.yml</code> w swoim repozytorium.</p>
+        </div>
+    </div>
+
+    <p style="text-align: center; color: #999; margin-top: 40px;">
+        Stworzone z ❤️ dla leniwych Speednetowców
+    </p>
+</body>
+</html>

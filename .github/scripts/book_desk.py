@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
 Hotdesk Booking Script for GitHub Actions
-
-This script runs in GitHub Actions to book a desk for tomorrow.
-It handles token refresh and automatic secret rotation.
+Books your preferred desk automatically every day.
 """
 
 import os
@@ -13,29 +11,19 @@ import requests
 from datetime import datetime, timedelta
 
 # Configuration from environment
-BASE_URL = os.environ.get('HOTDESK_BASE_URL', 'https://hotdesk.speednet.pl')
-LOCATION_ID = os.environ.get('LOCATION_ID', '8f78f4e5-1cd6-40b7-a91e-34cab6768732')
+BASE_URL = 'https://hotdesk.speednet.pl'
+LOCATION_ID = '8f78f4e5-1cd6-40b7-a91e-34cab6768732'
 PREFERRED_DESKS = os.environ.get('PREFERRED_DESKS', 'S05,S15,S10,S14').split(',')
-BOOKING_SUBJECT = os.environ.get('BOOKING_SUBJECT', 'Tim codziennie w biurze')
+BOOKING_SUBJECT = os.environ.get('BOOKING_SUBJECT', 'Auto-booking')
 REFRESH_TOKEN = os.environ.get('REFRESH_TOKEN')
-DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'
-
-# Fallback: try to read from committed file if env var token fails
-TOKEN_FILE = '.github/data/refresh_token.txt'
 
 
 def log(message: str):
-    """Log with timestamp."""
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
 
 
 def refresh_access_token(refresh_token: str) -> tuple[str, str] | None:
-    """
-    Get new access token using refresh token.
-    Returns (access_token, new_refresh_token) or None on failure.
-    """
-    log("Refreshing access token...")
-
+    """Get new access token using refresh token."""
     try:
         response = requests.post(
             f"{BASE_URL}/auth/refresh",
@@ -43,46 +31,30 @@ def refresh_access_token(refresh_token: str) -> tuple[str, str] | None:
             headers={"Content-Type": "application/json"},
             timeout=30
         )
-
         if response.status_code == 200:
             data = response.json()
-            access_token = data.get('accessToken')
-            new_refresh_token = data.get('refreshToken')
-            log(f"Token refresh successful")
-            return access_token, new_refresh_token
-        else:
-            log(f"Token refresh failed: {response.status_code}")
-            log(f"Response: {response.text[:200]}")
-            return None
-
+            return data.get('accessToken'), data.get('refreshToken')
+        log(f"Token refresh failed: {response.status_code}")
+        return None
     except Exception as e:
-        log(f"Token refresh error: {e}")
+        log(f"Error: {e}")
         return None
 
 
 def get_available_desks(access_token: str, date: datetime) -> list:
     """Get available desks for a specific date."""
-    enter = date.strftime("%Y-%m-%dT00:00:00.000Z")
-    leave = date.strftime("%Y-%m-%dT23:59:59.000Z")
-
-    log(f"Fetching desk availability for {date.strftime('%Y-%m-%d')}...")
-
     response = requests.get(
         f"{BASE_URL}/location/{LOCATION_ID}/space/availability",
-        params={"enter": enter, "leave": leave},
+        params={
+            "enter": date.strftime("%Y-%m-%dT00:00:00.000Z"),
+            "leave": date.strftime("%Y-%m-%dT23:59:59.000Z")
+        },
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=30
     )
-
     if response.status_code != 200:
-        log(f"Failed to get desks: {response.status_code}")
         return []
-
-    desks = response.json()
-    available = [d for d in desks if d.get('available', False)]
-    log(f"Found {len(available)} available desks out of {len(desks)} total")
-
-    return available
+    return [d for d in response.json() if d.get('available', False)]
 
 
 def get_my_bookings(access_token: str) -> list:
@@ -92,164 +64,113 @@ def get_my_bookings(access_token: str) -> list:
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=30
     )
-
-    if response.status_code == 200:
-        return response.json()
-    return []
+    return response.json() if response.status_code == 200 else []
 
 
 def book_desk(access_token: str, space_id: str, date: datetime) -> bool:
-    """Book a specific desk for a date."""
-    payload = {
-        "enter": date.strftime("%Y-%m-%dT00:00:00.000Z"),
-        "leave": date.strftime("%Y-%m-%dT23:59:59.000Z"),
-        "spaceId": space_id,
-        "subject": BOOKING_SUBJECT,
-        "userEmail": ""
-    }
-
-    if DRY_RUN:
-        log(f"DRY RUN: Would book desk with payload: {json.dumps(payload)}")
-        return True
-
+    """Book a specific desk."""
     response = requests.post(
         f"{BASE_URL}/booking/",
-        json=payload,
+        json={
+            "enter": date.strftime("%Y-%m-%dT00:00:00.000Z"),
+            "leave": date.strftime("%Y-%m-%dT23:59:59.000Z"),
+            "spaceId": space_id,
+            "subject": BOOKING_SUBJECT,
+            "userEmail": ""
+        },
         headers={
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         },
         timeout=30
     )
-
-    if response.status_code == 201:
-        try:
-            booking = response.json()
-            log(f"Booking created successfully: {booking.get('id')}")
-        except Exception:
-            log("Booking created successfully (no response body)")
-        return True
-    else:
-        log(f"Booking failed: {response.status_code}")
-        log(f"Response: {response.text[:500]}")
-        return False
+    return response.status_code == 201
 
 
 def select_best_desk(available_desks: list) -> dict | None:
-    """Select the best available desk based on preference order."""
+    """Select best available desk based on preferences."""
     desk_map = {d['name']: d for d in available_desks}
-
     for preferred in PREFERRED_DESKS:
         if preferred in desk_map:
-            log(f"Selected preferred desk: {preferred}")
             return desk_map[preferred]
-
-    # If no preferred desk available, take any available
-    if available_desks:
-        desk = available_desks[0]
-        log(f"No preferred desk available, selecting: {desk['name']}")
-        return desk
-
-    return None
+    return available_desks[0] if available_desks else None
 
 
 def has_booking_for_date(bookings: list, date: datetime) -> bool:
-    """Check if user already has a booking for the given date."""
+    """Check if already booked for date."""
     date_str = date.strftime("%Y-%m-%d")
-
-    for booking in bookings:
-        enter = booking.get('enter', '')
-        if date_str in enter:
-            log(f"Already have booking for {date_str}: {booking.get('space', {}).get('name', 'unknown')}")
-            return True
-
-    return False
+    return any(date_str in b.get('enter', '') for b in bookings)
 
 
-def set_github_output(name: str, value: str):
-    """Set GitHub Actions output variable."""
-    github_output = os.environ.get('GITHUB_OUTPUT')
-    if github_output:
-        with open(github_output, 'a') as f:
+def set_output(name: str, value: str):
+    """Set GitHub Actions output."""
+    output_file = os.environ.get('GITHUB_OUTPUT')
+    if output_file:
+        with open(output_file, 'a') as f:
             f.write(f"{name}={value}\n")
-    # Also set as environment variable for subsequent steps
-    github_env = os.environ.get('GITHUB_ENV')
-    if github_env:
-        with open(github_env, 'a') as f:
+    # Also set as env for next steps
+    env_file = os.environ.get('GITHUB_ENV')
+    if env_file:
+        with open(env_file, 'a') as f:
             f.write(f"{name}={value}\n")
 
 
 def main():
-    log("=" * 50)
-    log("Hotdesk Booking Script")
-    log("=" * 50)
+    log("=== Hotdesk Auto-Booker ===")
 
-    if DRY_RUN:
-        log("*** DRY RUN MODE - No actual booking will be made ***")
-
-    # Try to get refresh token from env or fallback to file
-    refresh_token = REFRESH_TOKEN
-    if not refresh_token and os.path.exists(TOKEN_FILE):
-        log(f"Reading refresh token from {TOKEN_FILE}")
-        with open(TOKEN_FILE) as f:
-            refresh_token = f.read().strip()
-
-    if not refresh_token:
-        log("ERROR: REFRESH_TOKEN not set and no token file found")
+    if not REFRESH_TOKEN:
+        log("ERROR: REFRESH_TOKEN not set")
         sys.exit(1)
 
-    log(f"Base URL: {BASE_URL}")
-    log(f"Location ID: {LOCATION_ID}")
-    log(f"Preferred desks: {PREFERRED_DESKS}")
-
-    # Step 1: Refresh token
-    result = refresh_access_token(refresh_token)
+    # Refresh token
+    result = refresh_access_token(REFRESH_TOKEN)
     if not result:
-        log("FATAL: Could not refresh access token")
+        log("ERROR: Could not refresh token - may need to re-login")
         sys.exit(1)
 
     access_token, new_refresh_token = result
+    log("Token refreshed OK")
 
-    # Export new refresh token for GitHub Action to update
-    if new_refresh_token and new_refresh_token != refresh_token:
-        log(f"Refresh token rotated: {new_refresh_token[:8]}...")
-        set_github_output('NEW_REFRESH_TOKEN', new_refresh_token)
+    # Save new token for GitHub to commit
+    if new_refresh_token and new_refresh_token != REFRESH_TOKEN:
+        set_output('NEW_REFRESH_TOKEN', new_refresh_token)
 
-    # Step 2: Calculate tomorrow's date
-    tomorrow = datetime.now(tz=None) + timedelta(days=1)
-    log(f"Booking for: {tomorrow.strftime('%Y-%m-%d')} ({tomorrow.strftime('%A')})")
+    # Tomorrow's date
+    tomorrow = datetime.now() + timedelta(days=1)
+    day_name = ['Pon', 'Wt', 'Sr', 'Czw', 'Pt', 'Sob', 'Nd'][tomorrow.weekday()]
+    log(f"Data: {tomorrow.strftime('%Y-%m-%d')} ({day_name})")
 
-    # Skip weekends (Saturday=5, Sunday=6)
+    # Skip weekends
     if tomorrow.weekday() >= 5:
-        log("Tomorrow is weekend - skipping booking (token refreshed)")
+        log("Weekend - pomijam rezerwację")
         sys.exit(0)
 
-    # Step 3: Check if already booked
+    # Check existing booking
     bookings = get_my_bookings(access_token)
     if has_booking_for_date(bookings, tomorrow):
-        log("Already have a booking for tomorrow - skipping")
+        log("Już masz rezerwację na jutro")
         sys.exit(0)
 
-    # Step 4: Get available desks
+    # Find available desks
     available = get_available_desks(access_token, tomorrow)
-    if not available:
-        log("No desks available for tomorrow (all booked)")
-        sys.exit(0)  # Not a failure, just no availability
+    log(f"Dostępnych biurek: {len(available)}")
 
-    # Step 5: Select best desk
+    if not available:
+        log("Brak wolnych biurek")
+        sys.exit(0)
+
+    # Select and book
     desk = select_best_desk(available)
     if not desk:
-        log("Could not select a desk")
+        log("Nie można wybrać biurka")
         sys.exit(1)
 
-    log(f"Booking desk: {desk['name']} (ID: {desk['id']})")
+    log(f"Rezerwuję: {desk['name']}")
 
-    # Step 6: Make booking
     if book_desk(access_token, desk['id'], tomorrow):
-        log("SUCCESS: Desk booked!")
-        sys.exit(0)
+        log(f"✅ SUKCES! Zarezerwowano {desk['name']}")
     else:
-        log("FAILED: Could not book desk")
+        log(f"❌ Nie udało się zarezerwować")
         sys.exit(1)
 
 
