@@ -15,6 +15,7 @@ on:
         type: boolean
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   HOTDESK_BASE_URL: https://hotdesk.speednet.pl
   LOCATION_ID: 8f78f4e5-1cd6-40b7-a91e-34cab6768732
   PREFERRED_DESKS: S05,S15,S10,S14
